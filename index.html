@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#047857" />
+    <title>Personal Finance Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              forest: "#047857",
+              mint: "#ecfdf5",
+              ink: "#0f172a"
+            },
+            boxShadow: {
+              soft: "0 18px 45px rgba(15, 23, 42, 0.08)"
+            }
+          }
+        }
+      };
+    </script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom": "https://esm.sh/react-dom@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+          "recharts": "https://esm.sh/recharts@2.15.0?external=react,react-dom",
+          "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <script src="https://unpkg.com/@babel/standalone@7.25.8/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module" data-presets="react" src="./src/App.jsx"></script>
+  </body>
+</html>
