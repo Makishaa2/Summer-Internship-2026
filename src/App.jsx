@@ -45,7 +45,7 @@ const storageKey = "student-finance-tracker";
 const fallbackName = "Makishaa";
 const previousDemoName = ["Nis", "han", "th"].join("");
 const defaultState = {
-  user: { name: fallbackName, currency: "USD" },
+  user: { name: fallbackName, currency: "INR" },
   isLoggedIn: false,
   transactions: [
     { id: crypto.randomUUID(), amount: 1200, type: "Income", category: "Salary", date: new Date().toISOString().slice(0, 10), description: "Part-time campus job" },
@@ -66,17 +66,38 @@ function loadState() {
     // Migrate older demo data saved in the browser without exposing that value in the UI.
     const savedName = parsed.user?.name?.trim();
     const shouldReplaceName = !savedName || savedName.toLowerCase() === previousDemoName.toLowerCase();
+    const savedCurrency = parsed.user?.currency?.trim();
+    const shouldReplaceCurrency = !savedCurrency || savedCurrency === "USD";
     return {
       ...parsed,
       user: {
         ...defaultState.user,
         ...parsed.user,
-        name: shouldReplaceName ? fallbackName : parsed.user.name
+        name: shouldReplaceName ? fallbackName : parsed.user.name,
+        currency: shouldReplaceCurrency ? "INR" : parsed.user.currency
       },
       budgets: { ...defaultState.budgets, ...parsed.budgets }
     };
   } catch {
     return defaultState;
+  }
+}
+
+const API_BASE =
+  typeof window !== "undefined" && (window.location.port === "5000" || window.location.port === "5173")
+    ? ""
+    : "http://127.0.0.1:5000";
+
+async function apiRequest(path, options = {}) {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json", ...options.headers },
+      ...options
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
@@ -87,6 +108,27 @@ function FinanceProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(state));
   }, [state]);
+
+  useEffect(() => {
+    let mounted = true;
+    apiRequest("/api/state").then((remoteState) => {
+      if (remoteState && mounted) {
+        setState((current) => ({
+          ...current,
+          user: {
+            ...current.user,
+            ...remoteState.user
+          },
+          transactions: remoteState.transactions || current.transactions,
+          budgets: remoteState.budgets || current.budgets,
+          goals: remoteState.goals || current.goals
+        }));
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const api = useMemo(() => {
     const update = (patch) => setState((current) => ({ ...current, ...patch }));
@@ -99,51 +141,104 @@ function FinanceProvider({ children }) {
       ...state,
       notice,
       notify,
-      login: (name) => update({ isLoggedIn: true, user: { ...state.user, name: name || state.user.name } }),
+      login: (name) => {
+        const nextName = name || state.user.name;
+        update({ isLoggedIn: true, user: { ...state.user, name: nextName } });
+        if (name) {
+          apiRequest("/api/user", {
+            method: "PUT",
+            body: JSON.stringify({ name: nextName })
+          });
+        }
+      },
       logout: () => {
         update({ isLoggedIn: false });
         notify("Signed out. Your finance data is still saved on this browser.");
       },
-      updateProfile: (user) => {
-        update({ user: { ...state.user, ...user } });
+      updateProfile: (userPatch) => {
+        const updatedUser = { ...state.user, ...userPatch };
+        update({ user: updatedUser });
         notify("Profile updated.");
+        apiRequest("/api/user", {
+          method: "PUT",
+          body: JSON.stringify(updatedUser)
+        });
       },
       addTransaction: (transaction) => {
-        update({ transactions: [{ ...transaction, id: crypto.randomUUID() }, ...state.transactions] });
+        const newTx = { ...transaction, id: crypto.randomUUID() };
+        update({ transactions: [newTx, ...state.transactions] });
         notify(`${transaction.type} added.`);
+        apiRequest("/api/transactions", {
+          method: "POST",
+          body: JSON.stringify(newTx)
+        });
       },
       removeTransaction: (id) => {
         update({ transactions: state.transactions.filter((item) => item.id !== id) });
         notify("Transaction deleted.");
+        apiRequest(`/api/transactions/${encodeURIComponent(id)}`, {
+          method: "DELETE"
+        });
       },
-      setBudget: (category, amount) =>
-        update({ budgets: { ...state.budgets, [category]: Number(amount) || 0 } }),
+      setBudget: (category, amount) => {
+        const amt = Number(amount) || 0;
+        update({ budgets: { ...state.budgets, [category]: amt } });
+        apiRequest(`/api/budgets/${encodeURIComponent(category)}`, {
+          method: "PUT",
+          body: JSON.stringify({ amount: amt })
+        });
+      },
       addGoal: (goal) => {
-        update({ goals: [{ ...goal, id: crypto.randomUUID(), saved: 0 }, ...state.goals] });
+        const newGoal = { ...goal, id: crypto.randomUUID(), saved: 0 };
+        update({ goals: [newGoal, ...state.goals] });
         notify("Savings goal added.");
+        apiRequest("/api/goals", {
+          method: "POST",
+          body: JSON.stringify(newGoal)
+        });
       },
       allocateGoal: (id, amount) => {
         if (!Number(amount)) {
           notify("Enter an amount before saving to a goal.");
           return;
         }
+        const addAmt = Number(amount) || 0;
         update({
           goals: state.goals.map((goal) =>
             goal.id === id
-              ? { ...goal, saved: Math.min(goal.target, goal.saved + (Number(amount) || 0)) }
+              ? { ...goal, saved: Math.min(goal.target, goal.saved + addAmt) }
               : goal
           )
         });
         notify("Funds allocated to goal.");
+        apiRequest(`/api/goals/${encodeURIComponent(id)}/allocate`, {
+          method: "POST",
+          body: JSON.stringify({ amount: addAmt })
+        });
       },
       removeGoal: (id) => {
         update({ goals: state.goals.filter((goal) => goal.id !== id) });
         notify("Savings goal deleted.");
+        apiRequest(`/api/goals/${encodeURIComponent(id)}`, {
+          method: "DELETE"
+        });
       },
       resetDemoData: () => {
         localStorage.removeItem(storageKey);
         setState({ ...defaultState, isLoggedIn: true });
         notify("Demo data reset.");
+        apiRequest("/api/reset", { method: "POST" }).then((res) => {
+          if (res && res.state) {
+            setState((curr) => ({
+              ...curr,
+              user: { ...defaultState.user, ...res.state.user },
+              transactions: res.state.transactions || defaultState.transactions,
+              budgets: res.state.budgets || defaultState.budgets,
+              goals: res.state.goals || defaultState.goals,
+              isLoggedIn: true
+            }));
+          }
+        });
       }
     };
   }, [state, notice]);
@@ -155,10 +250,12 @@ function useFinance() {
   return useContext(FinanceContext);
 }
 
-function formatMoney(value, currency = "USD") {
-  return new Intl.NumberFormat("en-US", {
+function formatMoney(value, currency = "INR") {
+  const curr = currency === "USD" ? "INR" : currency || "INR";
+  const locale = curr === "INR" ? "en-IN" : "en-US";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency,
+    currency: curr,
     maximumFractionDigits: 0
   }).format(value || 0);
 }
@@ -263,7 +360,7 @@ function ProfilePanel() {
         <label className="text-sm font-semibold text-slate-700">
           Currency
           <select className="field mt-2" value={user.currency} onChange={(event) => updateProfile({ currency: event.target.value })}>
-            {["USD", "INR", "EUR", "GBP", "AUD"].map((currency) => (
+            {["INR", "USD", "EUR", "GBP", "AUD"].map((currency) => (
               <option key={currency}>{currency}</option>
             ))}
           </select>

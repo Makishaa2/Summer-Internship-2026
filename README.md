@@ -17,10 +17,27 @@ A minimal, fully functional single-page finance tracker for college students.
 
 ## Run Locally
 
-This project can run as a zero-setup static MVP:
+### Fullstack (Backend + SQLite DB + Frontend)
+
+Start the Express backend and SQLite database along with the frontend dev server:
 
 ```powershell
-python -m http.server 5173 --bind 127.0.0.1
+npm install
+npm run dev
+```
+
+Or run the backend server directly (which serves both the API and the web application at `http://127.0.0.1:5000`):
+
+```powershell
+npm start
+```
+
+### Static Mode
+
+This project can also run as a zero-setup static MVP:
+
+```powershell
+npm run dev:client
 ```
 
 Then open:
@@ -29,11 +46,17 @@ Then open:
 http://127.0.0.1:5173
 ```
 
-If the browser is already open from an older version, refresh the page once. The app will migrate the saved profile name in LocalStorage automatically. You can also use `Profile > Reset Demo Data` inside the dashboard.
+If the browser is already open from an older version, refresh the page once. The app will sync with the SQLite database automatically. You can also use `Profile > Reset Demo Data` inside the dashboard.
 
-The `package.json` also includes Vite scripts for a standard React workflow once dependencies are installed:
+## Backend & Database
 
-```powershell
-npm install
-npm run dev
-```
+- **Backend**: Express REST API (`server/index.js`, `server/routes.js`)
+- **Database**: SQLite (`data/finance.db`) via `server/db.js` with auto-migration and demo seeding
+- **API Endpoints**:
+  - `GET /api/state` - Fetch full user state, transactions, budgets, and goals
+  - `GET /api/user` & `PUT /api/user` - View and update user profile
+  - `GET /api/transactions` & `POST /api/transactions` & `DELETE /api/transactions/:id` - Transaction CRUD
+  - `GET /api/budgets` & `PUT /api/budgets/:category` - Budget management
+  - `GET /api/goals` & `POST /api/goals` & `POST /api/goals/:id/allocate` & `DELETE /api/goals/:id` - Savings goal management
+  - `POST /api/reset` - Reset demo data in the SQLite database
+
